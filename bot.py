@@ -257,4 +257,4 @@ async def generate_ai_reply(history):
 
 @bot.event
 async def on_message(message):
-    global chat_history
+    global chat_history, chat_active
