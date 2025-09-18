@@ -2,12 +2,12 @@ import discord
 from discord.ext import commands
 import google.generativeai as genai
 import os
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, Response
 import threading
 
 # --- Load from environment ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # --- Gemini Setup ---
@@ -26,6 +26,29 @@ chat_history = []
 
 # --- Flask App for Web Service ---
 app = Flask(__name__)
+
+# --- Basic Auth Credentials ---
+USERNAME = "magma"
+PASSWORD = "marrow"
+
+
+def check_auth(username, password):
+    return username == USERNAME and password == PASSWORD
+
+
+def authenticate():
+    return Response(
+        "❌ Authentication required.", 401,
+        {"WWW-Authenticate": 'Basic realm="Login Required"'}
+    )
+
+
+@app.before_request
+def require_auth():
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return authenticate()
+
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -55,6 +78,7 @@ HTML_TEMPLATE = """
 
 last_response = "No command run yet."
 
+
 @app.route("/", methods=["GET", "POST"])
 def control_panel():
     global chat_active, chat_history, last_response
@@ -71,7 +95,7 @@ def control_panel():
             chat_active = False
             last_response = "🛑 Bot unbound (no longer auto-responding)."
         elif cmd == "rmove":
-            last_response = "👋 Bot will leave the server (use inside Discord)."
+            last_response = "👋 Use `.rmove` in Discord to remove the bot from a server."
         else:
             last_response = f"⚠️ Unknown command: {cmd}"
     return render_template_string(HTML_TEMPLATE, response=last_response)
@@ -88,6 +112,7 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
 
+# --- Commands ---
 @bot.command()
 async def set(ctx):
     global chat_active, chat_history
@@ -131,11 +156,11 @@ async def on_message(message):
     await bot.process_commands(message)
 
     if chat_active:
-        chat_history.append({"role": "user", "content": message.content})
+        chat_history.append({"role": "user", "parts": [message.content]})
         try:
             response = model.generate_content(chat_history)
             reply = response.text
-            chat_history.append({"role": "assistant", "content": reply})
+            chat_history.append({"role": "assistant", "parts": [reply]})
             await message.channel.send(reply)
         except Exception as e:
             await message.channel.send(f"⚠️ Error: {e}")
@@ -143,5 +168,5 @@ async def on_message(message):
 
 # --- Start both Flask and Discord ---
 if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
+    threading.Thread(target=run_flask, daemon=True).start()
     bot.run(DISCORD_TOKEN)
