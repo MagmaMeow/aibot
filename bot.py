@@ -24,17 +24,17 @@ bot = commands.Bot(command_prefix=".", intents=intents)
 chat_active = False
 chat_history = []
 
-# --- Flask App for Web Service ---
-app = Flask(__name__)
+# --- Sudo / Blacklist ---
+sudo_blacklist = set()  # banned users
+SUDO_PASSWORD = "Parker"
 
-# --- Basic Auth Credentials ---
+# --- Flask Web Panel ---
+app = Flask(__name__)
 USERNAME = "magma"
 PASSWORD = "marrow"
 
-
 def check_auth(username, password):
     return username == USERNAME and password == PASSWORD
-
 
 def authenticate():
     return Response(
@@ -42,13 +42,11 @@ def authenticate():
         {"WWW-Authenticate": 'Basic realm="Login Required"'}
     )
 
-
 @app.before_request
 def require_auth():
     auth = request.authorization
     if not auth or not check_auth(auth.username, auth.password):
         return authenticate()
-
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -78,7 +76,6 @@ HTML_TEMPLATE = """
 
 last_response = "No command run yet."
 
-
 @app.route("/", methods=["GET", "POST"])
 def control_panel():
     global chat_active, chat_history, last_response
@@ -100,19 +97,16 @@ def control_panel():
             last_response = f"⚠️ Unknown command: {cmd}"
     return render_template_string(HTML_TEMPLATE, response=last_response)
 
-
 def run_flask():
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
 
 # --- Discord Bot Events ---
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
-
-# --- Commands ---
+# --- AI Commands ---
 @bot.command()
 async def set(ctx):
     global chat_active, chat_history
@@ -122,13 +116,11 @@ async def set(ctx):
     chat_history = []
     await ctx.send("🤖 AI bot is now bound to respond to every message.")
 
-
 @bot.command()
 async def reset(ctx):
     global chat_history
     chat_history = []
     await ctx.send("🔄 Conversation reset.")
-
 
 @bot.command()
 async def aauthnot(ctx):
@@ -138,7 +130,6 @@ async def aauthnot(ctx):
     chat_active = False
     await ctx.send("🛑 AI bot has been unbound (no longer auto-responding).")
 
-
 @bot.command()
 async def rmove(ctx):
     if ctx.author.id != OWNER_ID:
@@ -146,13 +137,116 @@ async def rmove(ctx):
     await ctx.send("👋 Leaving this server now...")
     await ctx.guild.leave()
 
+# --- Sudo System ---
+@bot.command()
+async def sudo(ctx, password: str, *, command: str = None):
+    if ctx.author.id in sudo_blacklist:
+        return await ctx.send("⛔ You are banned from using sudo.")
+    if ctx.author.id != OWNER_ID:
+        return await ctx.send("❌ Only my owner can use sudo.")
+    if password != SUDO_PASSWORD:
+        return await ctx.send("❌ Wrong sudo password.")
+    if not command:
+        return await ctx.send("⚡ Provide a command. Example: `.sudo Parker help`")
 
+    command = command.lower()
+
+    # Sudo commands
+    if command == "help":
+        cmds = [
+            "`ban <@user>` - Ban a user from sudo",
+            "`unban <@user>` - Unban a user from sudo",
+            "`list` - List all blacklisted users",
+            "`say <msg>` - Make the bot say something",
+            "`purge <n>` - Delete n messages",
+            "`kick <@user>` - Kick a user",
+            "`nick <@user> <name>` - Change nickname",
+            "`shutdown` - Shutdown bot",
+            "`bind` - Activate auto-reply",
+            "`unbind` - Deactivate auto-reply",
+        ]
+        await ctx.send("📜 **Sudo Commands:**\n" + "\n".join(cmds))
+
+    elif command.startswith("ban"):
+        if ctx.message.mentions:
+            user = ctx.message.mentions[0]
+            sudo_blacklist.add(user.id)
+            await ctx.send(f"⛔ {user} has been banned from sudo.")
+        else:
+            await ctx.send("⚠️ Mention a user to ban.")
+
+    elif command.startswith("unban"):
+        if ctx.message.mentions:
+            user = ctx.message.mentions[0]
+            sudo_blacklist.discard(user.id)
+            await ctx.send(f"✅ {user} has been unbanned from sudo.")
+        else:
+            await ctx.send("⚠️ Mention a user to unban.")
+
+    elif command == "list":
+        if not sudo_blacklist:
+            await ctx.send("✅ No one is blacklisted.")
+        else:
+            users = [f"<@{uid}>" for uid in sudo_blacklist]
+            await ctx.send("⛔ Blacklisted users:\n" + "\n".join(users))
+
+    elif command.startswith("say"):
+        msg = command.replace("say", "", 1).strip()
+        await ctx.send(msg)
+
+    elif command.startswith("purge"):
+        try:
+            n = int(command.split()[1])
+            await ctx.channel.purge(limit=n+1)
+            await ctx.send(f"🧹 Deleted {n} messages.")
+        except:
+            await ctx.send("⚠️ Usage: `.sudo Parker purge <n>`")
+
+    elif command.startswith("kick"):
+        if ctx.message.mentions:
+            user = ctx.message.mentions[0]
+            await ctx.guild.kick(user)
+            await ctx.send(f"👢 Kicked {user}")
+        else:
+            await ctx.send("⚠️ Mention a user to kick.")
+
+    elif command.startswith("nick"):
+        parts = command.split()
+        if len(parts) >= 3 and ctx.message.mentions:
+            user = ctx.message.mentions[0]
+            new_name = " ".join(parts[2:])
+            await user.edit(nick=new_name)
+            await ctx.send(f"✏️ Changed {user}'s nickname to {new_name}")
+        else:
+            await ctx.send("⚠️ Usage: `.sudo Parker nick @user NewName`")
+
+    elif command == "shutdown":
+        await ctx.send("⚡ Shutting down...")
+        await bot.close()
+
+    elif command == "bind":
+        global chat_active
+        chat_active = True
+        await ctx.send("🤖 AI auto-reply activated.")
+
+    elif command == "unbind":
+        global chat_active
+        chat_active = False
+        await ctx.send("🛑 AI auto-reply deactivated.")
+
+    else:
+        await ctx.send("⚠️ Unknown sudo command.")
+
+# --- AI Auto Reply ---
 @bot.event
 async def on_message(message):
     global chat_history, chat_active
-
     if message.author.bot:
         return
+    # Block blacklisted users from using any bot command
+    if message.author.id in sudo_blacklist:
+        return
+
     await bot.process_commands(message)
 
     if chat_active:
@@ -165,8 +259,7 @@ async def on_message(message):
         except Exception as e:
             await message.channel.send(f"⚠️ Error: {e}")
 
-
-# --- Start both Flask and Discord ---
+# --- Start ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     bot.run(DISCORD_TOKEN)
