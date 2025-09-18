@@ -263,7 +263,9 @@ async def on_message(message):
     # Always process commands first
     await bot.process_commands(message)
 
-    # ✅ FIXED LINE — block blacklisted users
+    # Block blacklisted users
     if message.author.id in sudo_blacklist:
-    return
+        return
 
+    if chat_active:
+        chat_history
