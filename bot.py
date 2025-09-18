@@ -264,4 +264,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
     # ✅ FIXED LINE — block blacklisted users
-    if
+    if message.author.id in sudo_blacklist:
+    return
+
