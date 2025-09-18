@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 import google.generativeai as genai
 from flask import Flask, request, render_template_string, Response
+import traceback
 
 # =========================
 # --- Load from Environment
@@ -256,16 +257,4 @@ async def generate_ai_reply(history):
 
 @bot.event
 async def on_message(message):
-    global chat_history, chat_active
-    if message.author.bot:
-        return
-
-    # Always process commands first
-    await bot.process_commands(message)
-
-    # Block blacklisted users
-    if message.author.id in sudo_blacklist:
-        return
-
-    if chat_active:
-        chat_history
+    global chat_history,
