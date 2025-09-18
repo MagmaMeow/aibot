@@ -263,4 +263,5 @@ async def on_message(message):
     # Always process commands first
     await bot.process_commands(message)
 
-    if message.author
+    # ✅ FIXED LINE — block blacklisted users
+    if
