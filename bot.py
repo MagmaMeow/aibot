@@ -20,11 +20,9 @@ intents.messages = True
 intents.message_content = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-# Conversation state
+# --- Global state ---
 chat_active = False
 chat_history = []
-
-# --- Sudo / Blacklist ---
 sudo_blacklist = set()  # banned users
 SUDO_PASSWORD = "Parker"
 
@@ -37,10 +35,7 @@ def check_auth(username, password):
     return username == USERNAME and password == PASSWORD
 
 def authenticate():
-    return Response(
-        "❌ Authentication required.", 401,
-        {"WWW-Authenticate": 'Basic realm="Login Required"'}
-    )
+    return Response("❌ Authentication required.", 401, {"WWW-Authenticate": 'Basic realm="Login Required"'})
 
 @app.before_request
 def require_auth():
@@ -140,6 +135,7 @@ async def rmove(ctx):
 # --- Sudo System ---
 @bot.command()
 async def sudo(ctx, password: str, *, command: str = None):
+    global chat_active  # Needed if bind/unbind used
     if ctx.author.id in sudo_blacklist:
         return await ctx.send("⛔ You are banned from using sudo.")
     if ctx.author.id != OWNER_ID:
@@ -151,7 +147,6 @@ async def sudo(ctx, password: str, *, command: str = None):
 
     command = command.lower()
 
-    # Sudo commands
     if command == "help":
         cmds = [
             "`ban <@user>` - Ban a user from sudo",
@@ -225,12 +220,10 @@ async def sudo(ctx, password: str, *, command: str = None):
         await bot.close()
 
     elif command == "bind":
-        global chat_active
         chat_active = True
         await ctx.send("🤖 AI auto-reply activated.")
 
     elif command == "unbind":
-        global chat_active
         chat_active = False
         await ctx.send("🛑 AI auto-reply deactivated.")
 
@@ -243,10 +236,8 @@ async def on_message(message):
     global chat_history, chat_active
     if message.author.bot:
         return
-    # Block blacklisted users from using any bot command
     if message.author.id in sudo_blacklist:
         return
-
     await bot.process_commands(message)
 
     if chat_active:
